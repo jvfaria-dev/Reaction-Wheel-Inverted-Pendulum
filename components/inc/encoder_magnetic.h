@@ -24,4 +24,26 @@ float encoder_read_angle(i2c_master_bus_handle_t bus_handle);
  */
 float encoder_read_rpm(i2c_master_bus_handle_t bus_handle);
 
+/**
+ * @brief Ultimo angulo lido com sucesso por encoder_read_rpm() (graus, -1 se nenhum).
+ *        Nao acessa o barramento I2C.
+ */
+float encoder_get_last_angle(void);
+
+/**
+ * @brief Numero acumulado de falhas de leitura do AS5600.
+ */
+uint32_t encoder_get_error_count(void);
+
+/**
+ * @brief Ultimo codigo de erro I2C do AS5600 (ESP_OK se nunca falhou).
+ */
+esp_err_t encoder_get_last_error(void);
+
+/**
+ * @brief Diagnostico na inicializacao: verifica se o AS5600 responde no I2C,
+ *        le STATUS/AGC/MAGNITUDE (deteccao do ima) e imprime 10 angulos.
+ */
+esp_err_t encoder_diagnose(i2c_master_bus_handle_t bus_handle);
+
 #endif // ENCODER_MAGNETIC_H_

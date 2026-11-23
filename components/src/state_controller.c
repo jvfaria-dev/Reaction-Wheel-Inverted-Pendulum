@@ -12,6 +12,18 @@ static const char *TAG = "STATE_CTRL";
 static state_controller_config_t ctrl_cfg;
 static bool is_initialized = false;
 
+// Discretização ZOH do modelo em paramEncomendadoc.m para Ts = 1 ms.
+static const state_space_model_t discrete_model = {
+    .ad = {
+        { 1.0000412089f,  0.0009998727f,  0.0000002317f },
+        { 0.0824081770f,  0.9997591726f,  0.0004631878f },
+        {-0.0822831421f,  0.0002404412f,  0.9965048795f },
+    },
+    .bd = {-0.0000010024f, -0.0020034734f, 0.0151178009f},
+    .cd = {1.0f, 0.0f, 0.0f},
+    .dd = 0.0f,
+};
+
 static inline float saturate(float val, float min_val, float max_val)
 {
     if (val > max_val) return max_val;
@@ -53,6 +65,10 @@ void state_controller_init_custom(const state_controller_config_t *cfg)
 
 void state_controller_set_gains(float kd1, float kd2, float kd3)
 {
+    if (!is_initialized) {
+        state_controller_init();
+    }
+
     ctrl_cfg.kd[0] = kd1;
     ctrl_cfg.kd[1] = kd2;
     ctrl_cfg.kd[2] = kd3;
@@ -61,6 +77,10 @@ void state_controller_set_gains(float kd1, float kd2, float kd3)
 
 void state_controller_set_reference(float reference_rad)
 {
+    if (!is_initialized) {
+        state_controller_init();
+    }
+
     ctrl_cfg.r = reference_rad;
 }
 
@@ -68,6 +88,42 @@ void state_controller_get_config(state_controller_config_t *out_cfg)
 {
     if (out_cfg) {
         *out_cfg = ctrl_cfg;
+    }
+}
+
+void state_controller_get_model(state_space_model_t *out_model)
+{
+    if (out_model != NULL) {
+        *out_model = discrete_model;
+    }
+}
+
+void state_controller_predict(const state_vector_t *x, float voltage,
+                              state_vector_t *next_state, float *output)
+{
+    if (x == NULL) {
+        return;
+    }
+
+    const float state[3] = {x->theta, x->theta_dot, x->omega_r};
+    float next[3] = {0.0f, 0.0f, 0.0f};
+    float y = discrete_model.dd * voltage;
+
+    for (int row = 0; row < 3; row++) {
+        for (int col = 0; col < 3; col++) {
+            next[row] += discrete_model.ad[row][col] * state[col];
+        }
+        next[row] += discrete_model.bd[row] * voltage;
+        y += discrete_model.cd[row] * state[row];
+    }
+
+    if (next_state != NULL) {
+        next_state->theta = next[0];
+        next_state->theta_dot = next[1];
+        next_state->omega_r = next[2];
+    }
+    if (output != NULL) {
+        *output = y;
     }
 }
 
@@ -106,6 +162,8 @@ int16_t state_controller_update(const state_vector_t *x, state_controller_output
         out->u_raw = u_raw;
         out->voltage = u_sat;
         out->duty = duty;
+        state_controller_predict(x, u_sat, &out->predicted_state,
+                                 &out->predicted_output);
     }
 
     return duty;

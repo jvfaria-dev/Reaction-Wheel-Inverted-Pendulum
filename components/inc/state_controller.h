@@ -26,15 +26,16 @@ extern "C" {
 // PARÂMETROS PADRÃO DO MODELO DISCRETO E GANHOS (MATLAB / SIMULINK)
 // ============================================================================
 #define STATE_CTRL_TS_DEFAULT           0.001f    // Ts = 1 ms (1000 Hz)
-#define STATE_CTRL_VNOM_DEFAULT         24.0f     // Tensão nominal máxima da fonte/motor (V)
-#define STATE_CTRL_VMAX_DEFAULT         24.0f     // Saturação superior (V)
-#define STATE_CTRL_VMIN_DEFAULT        -24.0f     // Saturação inferior (V)
+#define STATE_CTRL_VNOM_DEFAULT         12.0f     // Tensão nominal do motor do modelo (V)
+#define STATE_CTRL_VMAX_DEFAULT         12.0f     // Saturação superior (V)
+#define STATE_CTRL_VMIN_DEFAULT        -12.0f     // Saturação inferior (V)
 
-// Ganhos Kd obtidos a partir dos polos [0.9920, 0.9915, 0.9608]
+// Ganhos Kd: polos de malha fechada em z = [0.99900, 0.99601, 0.99501]
+// (continuos -1, -4, -5 rad/s), conferidos com eig(Ad - Bd*Kd).
 // u = r - (Kd1*x1 + Kd2*x2 + Kd3*x3)
-#define STATE_CTRL_KD1_DEFAULT         -13.5407f  // Ganho do estado x1 (Ângulo theta do pêndulo em rad)
-#define STATE_CTRL_KD2_DEFAULT          -1.4895f  // Ganho do estado x2 (Velocidade angular theta_dot em rad/s)
-#define STATE_CTRL_KD3_DEFAULT          -0.5633f  // Ganho do estado x3 (Velocidade angular da roda omega_r em rad/s)
+#define STATE_CTRL_KD1_DEFAULT         -55.5743066f  // Ganho para polo contínuo -1 rad/s
+#define STATE_CTRL_KD2_DEFAULT          -4.9923402f  // Ganho para polo contínuo -4 rad/s
+#define STATE_CTRL_KD3_DEFAULT          -0.2496020f  // Ganho para polo contínuo -5 rad/s
 
 // ============================================================================
 // ESTRUTURAS DE DADOS
@@ -48,6 +49,16 @@ typedef struct {
     float theta_dot;  /**< x2: Velocidade angular do pêndulo (rad/s) */
     float omega_r;    /**< x3: Velocidade angular da roda de reação (rad/s) */
 } state_vector_t;
+
+/**
+ * @brief Modelo discreto x[k+1] = Ad*x[k] + Bd*u[k], y[k] = Cd*x[k] + Dd*u[k].
+ */
+typedef struct {
+    float ad[3][3];
+    float bd[3];
+    float cd[3];
+    float dd;
+} state_space_model_t;
 
 /**
  * @brief Configurações do controlador em espaço de estados
@@ -68,6 +79,8 @@ typedef struct {
     float u_raw;      /**< Tensão calculada antes da saturação (Volts) */
     float voltage;    /**< Tensão final aplicada após saturação (Volts) */
     int16_t duty;     /**< Duty cycle correspondente para a ponte H (-255 a +255) */
+    state_vector_t predicted_state; /**< Estado previsto para k+1 pelo modelo discreto */
+    float predicted_output; /**< Saída y[k] = Cd*x[k] + Dd*u[k] (ângulo theta) */
 } state_controller_output_t;
 
 // ============================================================================
@@ -115,6 +128,17 @@ int16_t state_controller_update(const state_vector_t *x, state_controller_output
  * @brief Obtém a configuração ativa no controlador.
  */
 void state_controller_get_config(state_controller_config_t *out_cfg);
+
+/**
+ * @brief Obtém as matrizes discretas calculadas no script paramEncomendadoc.m.
+ */
+void state_controller_get_model(state_space_model_t *out_model);
+
+/**
+ * @brief Propaga a planta discreta uma amostra usando a tensão de entrada.
+ */
+void state_controller_predict(const state_vector_t *x, float voltage,
+                              state_vector_t *next_state, float *output);
 
 #ifdef __cplusplus
 }

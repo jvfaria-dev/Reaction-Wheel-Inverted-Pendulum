@@ -13,8 +13,8 @@ static const char *TAG = "MOTOR";
 // ============================================================================
 // CONFIGURAÇÃO DOS PINOS
 // ============================================================================
-#define GPIO_RPWM        18               // PWM Frente
-#define GPIO_LPWM        19               // PWM Trás
+#define GPIO_RPWM        12               // PWM Frente
+#define GPIO_LPWM        13               // PWM Trás
 #define GPIO_REN          5               // Enable Direita (3.3V)
 #define GPIO_LEN          7               // Enable Esquerda (3.3V)
 
@@ -30,7 +30,17 @@ void motor_init(void)
     ESP_LOGI(TAG, "Inicializando motor nos GPIOs: RPWM=%d, LPWM=%d, REN=%d, LEN=%d", 
              GPIO_RPWM, GPIO_LPWM, GPIO_REN, GPIO_LEN);
 
-    // 1. Configura GPIOs REN e LEN como Saída Forte
+    // 1. GPIO12/13 sao USB D-/D+ no ESP32-C6: retira-os da funcao USB,
+    //    remove pull-ups internos e forca nivel baixo antes de qualquer coisa.
+    const gpio_num_t pwm_pins[] = {GPIO_RPWM, GPIO_LPWM};
+    for (int i = 0; i < 2; i++) {
+        gpio_reset_pin(pwm_pins[i]);
+        gpio_set_direction(pwm_pins[i], GPIO_MODE_OUTPUT);
+        gpio_set_pull_mode(pwm_pins[i], GPIO_FLOATING);
+        gpio_set_level(pwm_pins[i], 0);
+    }
+
+    // 2. Enables como saida, inicialmente DESLIGADOS (ponte em alta impedancia)
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << GPIO_REN) | (1ULL << GPIO_LEN),
         .mode = GPIO_MODE_OUTPUT,
@@ -38,13 +48,11 @@ void motor_init(void)
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
-    gpio_config(&io_conf);
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+    gpio_set_level(GPIO_REN, 0);
+    gpio_set_level(GPIO_LEN, 0);
 
-    // Habilita a ponte H (Coloca 3.3V cravados nos dois pinos de Enable)
-    gpio_set_level(GPIO_REN, 1);
-    gpio_set_level(GPIO_LEN, 1);
-
-    // 2. Configura o Timer do LEDC
+    // 3. Configura o Timer do LEDC
     ledc_timer_config_t timer_conf = {
         .speed_mode       = LEDC_MODE,
         .timer_num        = LEDC_TIMER,
@@ -54,29 +62,31 @@ void motor_init(void)
     };
     ESP_ERROR_CHECK(ledc_timer_config(&timer_conf));
 
-    // 3. Configura Canal RPWM
+    // 4. Configura Canal RPWM
     ledc_channel_config_t chan_r = {
         .speed_mode     = LEDC_MODE,
         .channel        = LEDC_CHANNEL_R,
         .timer_sel      = LEDC_TIMER,
-        .intr_type      = LEDC_INTR_DISABLE,
         .gpio_num       = GPIO_RPWM,
         .duty           = 0,
         .hpoint         = 0
     };
     ESP_ERROR_CHECK(ledc_channel_config(&chan_r));
 
-    // 4. Configura Canal LPWM
+    // 5. Configura Canal LPWM
     ledc_channel_config_t chan_l = {
         .speed_mode     = LEDC_MODE,
         .channel        = LEDC_CHANNEL_L,
         .timer_sel      = LEDC_TIMER,
-        .intr_type      = LEDC_INTR_DISABLE,
         .gpio_num       = GPIO_LPWM,
         .duty           = 0,
         .hpoint         = 0
     };
     ESP_ERROR_CHECK(ledc_channel_config(&chan_l));
+
+    // 6. So agora, com os dois PWM garantidamente em 0, habilita a ponte H.
+    gpio_set_level(GPIO_REN, 1);
+    gpio_set_level(GPIO_LEN, 1);
 
     ESP_LOGI(TAG, "Motor inicializado com sucesso.");
 }
