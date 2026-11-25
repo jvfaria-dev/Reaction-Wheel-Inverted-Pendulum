@@ -59,9 +59,6 @@ static const char *TAG = "MAIN_SEC";
 // 1 -> COM ENCODER: omega_r medido pelo AS5600 (I2C).
 #define USE_ENCODER                 0
 
-#if USE_ENCODER && IMU_USE_SOFT_I2C
-#error "O encoder AS5600 nao funciona com o I2C por software: use USE_ENCODER 0 ou IMU_USE_SOFT_I2C 0 (imu.h)."
-#endif
 
 // ============================================================================
 // FILTROS, SEGURANCA E TEMPORIZACAO

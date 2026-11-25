@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "motor.h"
+#include "imu.h"   // IMU_USE_SOFT_I2C
 
 static const char *TAG = "MOTOR_TEST";
 
@@ -56,7 +57,7 @@ static void motor_test_task(void *parameter)
         for (int elapsed_ms = 0; elapsed_ms < MOTOR_TEST_STEP_MS;
              elapsed_ms += MOTOR_TEST_SAMPLE_MS) {
             vTaskDelay(pdMS_TO_TICKS(MOTOR_TEST_SAMPLE_MS));
-            if (context->bus_handle != NULL) {
+            if (IMU_USE_SOFT_I2C || context->bus_handle != NULL) {
                 const float rpm = encoder_read_rpm(context->bus_handle);
                 const float angle_deg = encoder_read_angle(context->bus_handle);
                 ESP_LOGI(TAG, "PWM %s | encoder: %.2f deg | %.2f RPM",
@@ -76,7 +77,7 @@ static void motor_test_task(void *parameter)
 
 esp_err_t motor_test_start(i2c_master_bus_handle_t bus_handle)
 {
-    if (bus_handle == NULL) {
+    if (!IMU_USE_SOFT_I2C && bus_handle == NULL) {
         ESP_LOGW(TAG, "Sem barramento I2C de hardware: teste do motor SEM leitura do encoder.");
     }
 

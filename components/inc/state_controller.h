@@ -33,9 +33,9 @@ extern "C" {
 // Ganhos Kd: polos de malha fechada em z = [0.99900, 0.99601, 0.99501]
 // (continuos -1, -4, -5 rad/s), conferidos com eig(Ad - Bd*Kd).
 // u = r - (Kd1*x1 + Kd2*x2 + Kd3*x3)
-#define STATE_CTRL_KD1_DEFAULT         -55.5743066f  // Ganho para polo contínuo -1 rad/s
-#define STATE_CTRL_KD2_DEFAULT          -4.9923402f  // Ganho para polo contínuo -4 rad/s
-#define STATE_CTRL_KD3_DEFAULT          -0.2496020f  // Ganho para polo contínuo -5 rad/s
+#define STATE_CTRL_KD1_DEFAULT         -52.2083f  // Ganho para polo contínuo -1 rad/s
+#define STATE_CTRL_KD2_DEFAULT          -4.6407f  // Ganho para polo contínuo -4 rad/s
+#define STATE_CTRL_KD3_DEFAULT          -0.2471f  // Ganho para polo contínuo -5 rad/s
 
 // ============================================================================
 // ESTRUTURAS DE DADOS
