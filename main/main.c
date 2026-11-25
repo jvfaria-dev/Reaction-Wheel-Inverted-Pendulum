@@ -7,6 +7,7 @@
  *   SEC_MODE_SENSORS    -> mesma leitura de sensores, motor SEMPRE desligado
  *                          (use para conferir sinais e o zero do angulo)
  *   SEC_MODE_MOTOR_TEST -> teste em malha aberta do motor + encoder
+ *   SEC_MODE_PIN_TEST   -> pinos da ponte em nivel fixo, sem PWM nem IMU
  */
 
 #include <math.h>
@@ -16,6 +17,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 
@@ -33,8 +35,9 @@ static const char *TAG = "MAIN_SEC";
 #define SEC_MODE_BALANCE            0
 #define SEC_MODE_SENSORS            1
 #define SEC_MODE_MOTOR_TEST         2
+#define SEC_MODE_PIN_TEST           3   // liga/desliga os pinos da ponte (multimetro)
 
-#define SEC_MODE                    SEC_MODE_BALANCE    
+#define SEC_MODE                    SEC_MODE_BALANCE   // altere aqui para mudar o modo de operacao
 
 // ============================================================================
 // SINAIS E ZERO (ajustar conforme o procedimento de verificacao)
@@ -55,6 +58,10 @@ static const char *TAG = "MAIN_SEC";
 //      Estavel no modelo enquanto o ganho real do motor for >= ~0.8x o do modelo.
 // 1 -> COM ENCODER: omega_r medido pelo AS5600 (I2C).
 #define USE_ENCODER                 0
+
+#if USE_ENCODER && IMU_USE_SOFT_I2C
+#error "O encoder AS5600 nao funciona com o I2C por software: use USE_ENCODER 0 ou IMU_USE_SOFT_I2C 0 (imu.h)."
+#endif
 
 // ============================================================================
 // FILTROS, SEGURANCA E TEMPORIZACAO
@@ -308,13 +315,71 @@ static void control_task(void *pv_parameters)
             max_cycle_period_us = 0;
         }
 
-        vTaskDelayUntil(&last_wake_time, period_ticks);
+        // Se o ciclo estourou o periodo, xTaskDelayUntil retorna sem bloquear.
+        // Nesse caso cede 1 tick para a tarefa IDLE nao disparar o watchdog.
+        if (xTaskDelayUntil(&last_wake_time, period_ticks) == pdFALSE) {
+            vTaskDelay(1);
+            last_wake_time = xTaskGetTickCount();
+        }
     }
 }
+
+#if SEC_MODE == SEC_MODE_PIN_TEST
+/**
+ * Teste dos pinos da ponte sem PWM, sem timer e sem IMU.
+ * Alterna os quatro pinos entre 3.3 V e 0 V a cada 3 s e le de volta o nivel
+ * real de cada pino. Meça com o multimetro entre o pino e o GND.
+ */
+static void pin_test(void)
+{
+    const int pins[] = {25, 26, 32, 33};
+    const char *names[] = {"RPWM(GPIO25)", "LPWM(GPIO26)", "R_EN(GPIO32)", "L_EN(GPIO33)"};
+    uint64_t mask = 0;
+    for (int i = 0; i < 4; i++) {
+        gpio_reset_pin(pins[i]);
+        mask |= 1ULL << pins[i];
+    }
+    gpio_config_t c = {
+        .pin_bit_mask = mask,
+        .mode = GPIO_MODE_INPUT_OUTPUT,   // saida com leitura de volta do pino
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&c);
+
+    ESP_LOGW(TAG, "=== TESTE DE PINOS DA PONTE (sem PWM) ===");
+    ESP_LOGW(TAG, "Desconecte a bateria de 12 V da ponte para este teste.");
+    int level = 1;
+    while (true) {
+        for (int i = 0; i < 4; i++) {
+            gpio_set_level(pins[i], level);
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+        for (int i = 0; i < 4; i++) {
+            const int read = gpio_get_level(pins[i]);
+            if (read == level) {
+                ESP_LOGI(TAG, "%-13s comandado=%d  lido=%d  OK  (meca %s)",
+                         names[i], level, read, level ? "~3.3 V" : "~0 V");
+            } else {
+                ESP_LOGE(TAG, "%-13s comandado=%d  lido=%d  <- PINO NAO OBEDECE (curto ou danificado)",
+                         names[i], level, read);
+            }
+        }
+        ESP_LOGW(TAG, "---- mantendo %s por 3 s ----", level ? "3.3 V" : "0 V");
+        vTaskDelay(pdMS_TO_TICKS(3000));
+        level = !level;
+    }
+}
+#endif
 
 void app_main(void)
 {
     ESP_LOGI(TAG, "Firmware SEC: controle em espaco de estados");
+
+#if SEC_MODE == SEC_MODE_PIN_TEST
+    pin_test();   // nao retorna
+#endif
 
     motor_init();
     motor_set_speed(0);

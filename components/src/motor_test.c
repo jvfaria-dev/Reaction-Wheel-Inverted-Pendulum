@@ -56,10 +56,12 @@ static void motor_test_task(void *parameter)
         for (int elapsed_ms = 0; elapsed_ms < MOTOR_TEST_STEP_MS;
              elapsed_ms += MOTOR_TEST_SAMPLE_MS) {
             vTaskDelay(pdMS_TO_TICKS(MOTOR_TEST_SAMPLE_MS));
-            const float rpm = encoder_read_rpm(context->bus_handle);
-            const float angle_deg = encoder_read_angle(context->bus_handle);
-            ESP_LOGI(TAG, "PWM %s | encoder: %.2f deg | %.2f RPM",
-                     current->label, angle_deg, rpm);
+            if (context->bus_handle != NULL) {
+                const float rpm = encoder_read_rpm(context->bus_handle);
+                const float angle_deg = encoder_read_angle(context->bus_handle);
+                ESP_LOGI(TAG, "PWM %s | encoder: %.2f deg | %.2f RPM",
+                         current->label, angle_deg, rpm);
+            }
         }
 
         motor_set_speed(0);
@@ -75,7 +77,7 @@ static void motor_test_task(void *parameter)
 esp_err_t motor_test_start(i2c_master_bus_handle_t bus_handle)
 {
     if (bus_handle == NULL) {
-        return ESP_ERR_INVALID_ARG;
+        ESP_LOGW(TAG, "Sem barramento I2C de hardware: teste do motor SEM leitura do encoder.");
     }
 
     test_context.bus_handle = bus_handle;
